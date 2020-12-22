@@ -5,18 +5,19 @@ namespace L08_Doom {
   window.addEventListener("load", hndLoad);
   const clrWhite: fc.Color = fc.Color.CSS("WHITE");
   export let viewport: fc.Viewport;
-  let root: fc.Node = new fc.Node("Root");
-  export let avatarNode: fc.Node = new fc.Node("AN");
+  export let root: fc.Node = new fc.Node("Root");
   export let avatar: AvatarControls;
   //let enemy: Enemy;
-  let enemies: fc.Node;
-  let walls: fc.Node = new fc.Node("Walls");
+  export let enemies: fc.Node;
+  export let walls: fc.Node = new fc.Node("Walls");
+  export const sizeWall: number = 3;
+  export const numWalls: number = 10;
+  let cameraRadius: number = 1.3;
 
   async function hndLoad(_event: Event): Promise<void> {
     const canvas: HTMLCanvasElement = document.querySelector("canvas");
     avatar = new AvatarControls(fc.Vector2.ONE(1), new fc.Vector3(10, 0, 10), new fc.Vector3(0, 225, 0));
-    avatarNode.appendChild(avatar);
-    root.appendChild(avatarNode);
+    root.appendChild(avatar);
 
     enemies = await hndEnemy();
     root.appendChild(enemies);
@@ -42,37 +43,37 @@ namespace L08_Doom {
     fc.Loop.addEventListener(fc.EVENT.LOOP_FRAME, hndLoop);
     fc.Loop.start(fc.LOOP_MODE.TIME_GAME, 60);
 
+    Hud.start();
+
     canvas.addEventListener("mousemove", hndMouse);
     canvas.addEventListener("click", canvas.requestPointerLock);
+    canvas.addEventListener("click", shoot);
   }
 
   function hndLoop(_event: Event): void {
     hndAvatar();
-    avatar.hndAvatarControls();
+
+    //gameState.time = fc.LOOP_MODE.TIME_GAME;
 
     for (let enemy of enemies.getChildren() as Enemy[])
     enemy.update();
 
     viewport.draw();
   }
+
+  function shoot(): void {
+    
+    if (gameState.ammo === 0) {
+      gameState.ammo = 50;
+    } else {
+      gameState.ammo--;
+      gameState.score = gameState.score + 5;
+      avatar.shoot();
+    }
+
+  }
   
   async function hndEnemy(): Promise<fc.Node> {
-/*     let posAvatar: fc.Vector3 = avatar.mtxLocal.translation;
-    enemy.rotateEnemy(posAvatar);
-    let nearTarget: Boolean = true;
-    
-    for (let wall of walls.getChildren() as GameObject[]) {
-      if (enemy.followPlayer(posAvatar, wall)) {
-        nearTarget = false;
-        break;
-      }
-    }
-    if (enemy.calculateBounce(avatar.mtxLocal.translation, 1.3)) {
-      nearTarget = false;
-    }
-    if (nearTarget) {
-      enemy.mtxLocal.translateZ(0.1);
-    } */
     let enemies: fc.Node = new fc.Node("Enemies");
 
     let txtMancubus: fc.TextureImage = new fc.TextureImage();
@@ -91,16 +92,24 @@ namespace L08_Doom {
   }
 
   function hndAvatar(): void {
-    let bouncedOff: Wall[] = bounceOffWalls(<Wall[]>walls.getChildren());
+/*     let bouncedOff: Wall[] = bounceOffWalls(<Wall[]>walls.getChildren());
     if (bouncedOff.length < 2)
       return;
 
     bouncedOff = bounceOffWalls(bouncedOff);
     if (bouncedOff.length == 0)
-      return;
+      return; */
+      let tempPos: fc.Vector3 = avatar.mtxLocal.translation;
+      avatar.hndAvatarControls();
+      let collisionsWall: Wall = avatar.hndCollision(cameraRadius);
+      if (collisionsWall) {
+        tempPos.x += collisionsWall.mtxLocal.getZ().x * 0.01;
+        tempPos.z += collisionsWall.mtxLocal.getZ().z * 0.01;
+        avatar.mtxLocal.translation = tempPos;
   }
+}
 
-  function bounceOffWalls(_walls: Wall[]): Wall[] {
+/*   function bounceOffWalls(_walls: Wall[]): Wall[] {
     let bouncedOff: Wall[] = [];
     let posAvatar: fc.Vector3 = avatar.mtxLocal.translation;
     for (let wall of _walls) {
@@ -111,7 +120,7 @@ namespace L08_Doom {
       }
     }
     return bouncedOff;
-  }
+  } */
 
   function buildWalls(): void {
     let txtWall: fc.TextureImage = new fc.TextureImage("../DoomAssets/CEMPOIS.png");

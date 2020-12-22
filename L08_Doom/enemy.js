@@ -15,139 +15,132 @@ var L08_Doom;
         ANGLE[ANGLE["_270"] = 6] = "_270";
         ANGLE[ANGLE["_315"] = 7] = "_315";
     })(ANGLE = L08_Doom.ANGLE || (L08_Doom.ANGLE = {}));
+    let JOB;
+    (function (JOB) {
+        JOB[JOB["IDLE"] = 0] = "IDLE";
+        JOB[JOB["PATROL"] = 1] = "PATROL";
+        JOB[JOB["HUNT"] = 2] = "HUNT";
+    })(JOB = L08_Doom.JOB || (L08_Doom.JOB = {}));
     class Enemy extends fc.Node {
         // private static speedMax: number = 1; // units per second
         // public direction: number = 0; 
         constructor(_name = "Enemy", _position) {
             super(_name);
-            this.speed = 1;
-            this.oldAngle = ANGLE._000;
+            this.speed = 3;
+            this.angleView = 0;
+            this.job = JOB.IDLE;
             this.addComponent(new fc.ComponentTransform());
             this.mtxLocal.translation = _position;
             this.show = new fcAid.Node("Show", fc.Matrix4x4.IDENTITY());
             this.appendChild(this.show);
             this.sprite = new fcAid.NodeSprite("Sprite");
+            this.sprite.addComponent(new fc.ComponentTransform());
             this.show.appendChild(this.sprite);
-            this.oldAngle = this.changeAngle();
-            this.sprite.setAnimation(Enemy.animations["Walk_000"]);
+            this.sprite.setAnimation(Enemy.animations["Idle_000"]);
             // this.sprite.showFrame(0);
             this.sprite.setFrameDirection(1);
             this.sprite.framerate = 2;
-            this.posTarget = _position;
+            // this.posTarget = _position;
+            this.chooseTargetPosition();
             // this.appendChild(new fcAid.Node("Cube", fc.Matrix4x4.IDENTITY(), new fc.Material("Cube", fc.ShaderUniColor, new fc.CoatColored(fc.Color.CSS("red"))), new fc.MeshCube()));
         }
         static generateSprites(_spritesheet) {
             Enemy.animations = {};
             for (let angle = 0; angle < 5; angle++) {
-                let name = "Walk" + ANGLE[angle];
+                let name = "Idle" + ANGLE[angle];
                 let sprite = new fcAid.SpriteSheetAnimation(name, _spritesheet);
-                sprite.generateByGrid(fc.Rectangle.GET(40 + angle * 125, 30, 93, 70), 3, 25, fc.ORIGIN2D.BOTTOMCENTER, fc.Vector2.Y(103));
+                sprite.generateByGrid(fc.Rectangle.GET(40 + angle * 125, 28, 93, 70), 3, 25, fc.ORIGIN2D.BOTTOMCENTER, fc.Vector2.Y(103));
                 Enemy.animations[name] = sprite;
             }
         }
-        changeAngle() {
-            let enemyViewDirection = this.mtxWorld.getZ();
-            let avatarToEnemy = fc.Vector3.TRANSFORMATION(L08_Doom.avatar.mtxWorld.translation, this.mtxWorldInverse, true);
-            let angle = fc.Vector3.DOT(avatarToEnemy, enemyViewDirection) / (this.pythagoras(avatarToEnemy) * this.pythagoras(enemyViewDirection));
-            angle = Math.acos(angle) * 180 / Math.PI;
-            console.log("Angle: " + angle + " x-achse: " + avatarToEnemy.x);
-            /* if (ANGLE._180 || ANGLE._225 || ANGLE._270 || ANGLE._315) {
-              console.log("Test erfolgt");
-              this.mtxLocal.rotateY(180);
-            } */
-            if (angle < 22.5)
-                return ANGLE._000;
-            if (angle < 67.5 && avatarToEnemy.x > 0)
-                return ANGLE._045;
-            if (angle < 112.5 && avatarToEnemy.x > 0)
-                return ANGLE._090;
-            if (angle < 157.5 && avatarToEnemy.x > 0)
-                return ANGLE._135;
-            if (angle > 157.5)
-                return ANGLE._180;
-            /* if (angle < 112.5 && avatarToEnemy.x < 0)
-                 return ANGLE._225;
-               if (angle < 67.5 && avatarToEnemy.x < 0)
-                 return ANGLE._270;
-               if (angle < 22.5 && avatarToEnemy.x < 0)
-                 return ANGLE._315;  */
-            return ANGLE._000;
-        }
-        pythagoras(_vector) {
-            return Math.sqrt(Math.pow(_vector.x, 2) + Math.pow(_vector.z, 2));
-        }
         update() {
-            if (this.mtxLocal.translation.equals(this.posTarget, 0.1))
-                this.chooseTargetPosition();
-            let spriteAngle = this.changeAngle();
-            //console.log(ANGLE[spriteAngle]);
-            if (this.oldAngle !== spriteAngle) {
-                this.sprite.setAnimation(Enemy.animations["Walk" + ANGLE[spriteAngle]]);
-                this.oldAngle = spriteAngle;
+            switch (this.job) {
+                case JOB.PATROL:
+                    if (this.mtxLocal.translation.equals(this.posTarget, 0.1)) {
+                        this.chooseTargetPosition();
+                        this.job = JOB.IDLE;
+                    }
+                    this.move();
+                    break;
+                case JOB.IDLE:
+                    if (this.mtxLocal.translation.equals(L08_Doom.avatar.mtxLocal.translation, 10)) {
+                        this.job = JOB.HUNT;
+                    }
+                    break;
+                case JOB.HUNT:
+                    this.mtxLocal.showTo(L08_Doom.avatar.mtxLocal.translation);
+                    this.mtxLocal.translateZ(this.speed * fc.Loop.timeFrameGame / 1000);
+                    if (this.mtxLocal.translation.equals(L08_Doom.avatar.mtxLocal.translation, 1)) {
+                        L08_Doom.gameState.health = L08_Doom.gameState.health - 10;
+                        L08_Doom.gameState.shield = L08_Doom.gameState.shield - 5;
+                        this.job = JOB.PATROL;
+                    }
             }
-            this.move();
+            this.displayAnimation();
+        }
+        hndIsTargetbetween() {
+            for (let walls of L08_Doom.root.getChildrenByName("Walls"))
+                for (let wall of walls.getChildren()) {
+                    if (this.isTargetbetween(L08_Doom.avatar, wall)) {
+                        return true;
+                    }
+                }
+            return false;
         }
         move() {
             this.mtxLocal.showTo(this.posTarget);
-            //this.mtxLocal.translateZ(this.speed * fc.Loop.timeFrameGame / 1000);
+            this.mtxLocal.translateZ(this.speed * fc.Loop.timeFrameGame / 1000);
+        }
+        displayAnimation() {
             this.show.mtxLocal.showTo(fc.Vector3.TRANSFORMATION(L08_Doom.avatar.mtxLocal.translation, this.mtxWorldInverse, true));
+            let rotation = this.show.mtxLocal.rotation.y;
+            rotation = (rotation + 360 + 22.5) % 360;
+            rotation = Math.floor(rotation / 45);
+            if (this.angleView == rotation)
+                return;
+            this.angleView = rotation;
+            if (rotation > 4) {
+                rotation = 8 - rotation;
+                this.flip(true);
+            }
+            else
+                this.flip(false);
+            let section = ANGLE[rotation]; // .padStart(3, "0");
+            //console.log(section);
+            this.sprite.setAnimation(Enemy.animations["Idle" + section]);
         }
         chooseTargetPosition() {
-            let range = 5; //sizeWall * numWalls / 2 - 2;
+            let range = L08_Doom.sizeWall * L08_Doom.numWalls / 2 - 2;
             this.posTarget = new fc.Vector3(fc.Random.default.getRange(-range, range), 0, fc.Random.default.getRange(-range, range));
+            console.log("New target", this.posTarget.toString());
+        }
+        flip(_reverse) {
+            this.sprite.mtxLocal.rotation = fc.Vector3.Y(_reverse ? 180 : 0);
+        }
+        vectorAmount(_vector) {
+            return Math.sqrt(Math.pow(_vector.x, 2) + Math.pow(_vector.y, 2) + Math.pow(_vector.z, 2));
+        }
+        isTargetbetween(_target, _betweenTarget) {
+            let posThis = this.mtxWorld.translation;
+            let posTarget = _target.mtxWorld.translation;
+            let posWith = _betweenTarget.mtxWorld.translation;
+            if (this.vectorAmount(fc.Vector3.DIFFERENCE(posWith, posThis)) > this.vectorAmount(fc.Vector3.DIFFERENCE(posTarget, posThis)))
+                return false;
+            let localWich = fc.Vector3.TRANSFORMATION(posWith, this.mtxWorldInverse, true);
+            if (localWich.z < 0)
+                return false;
+            //let normal: fc.Vector3 = this.mtxWorld.getZ();
+            let normalBe = _betweenTarget.mtxWorld.getZ();
+            let sizeBe = _betweenTarget.getComponent(fc.ComponentMesh).pivot.scaling;
+            let ray = new fc.Ray(this.mtxWorld.getZ(), posTarget);
+            let intersect = ray.intersectPlane(posWith, normalBe);
+            let localIntersect = fc.Vector3.TRANSFORMATION(intersect, _betweenTarget.mtxWorldInverse, true);
+            if (Math.abs(localIntersect.x) > 0.5 * sizeBe.x) {
+                return false;
+            }
+            return true;
         }
     }
     L08_Doom.Enemy = Enemy;
 })(L08_Doom || (L08_Doom = {}));
-/* export class Enemy extends GameObject {
-
-  public constructor(_name: string, _size: fc.Vector2, _position: fc.Vector3, _rotation: fc.Vector3, _material: fc.Material) {
-    super(_name, _size, _position, _rotation);
-
-    let cmpMaterial: fc.ComponentMaterial = new fc.ComponentMaterial(_material);
-    cmpMaterial.pivot.scale(fc.Vector2.ONE(1));
-    this.addComponent(cmpMaterial);
-    this.mtxLocal.translateY(_size.y / 2);
-  }
-
-  public rotateEnemy(_target: fc.Vector3): void {
-    this.mtxLocal.showTo(_target);
-
-  }
-
-  public followPlayer(_target: fc.Vector3, _wall: GameObject): boolean {
-    let normalEnemy: fc.Vector3 = this.mtxWorld.getZ();
-    let normalWall: fc.Vector3 = _wall.mtxWorld.getZ();
-    let posEnemy: fc.Vector3 = this.mtxWorld.translation;
-    let posWall: fc.Vector3 = _wall.mtxWorld.translation;
-    let sizeWall: fc.Vector3 = _wall.getComponent(fc.ComponentMesh).pivot.scaling;
-
-    if (this.pythagoras(fc.Vector3.DIFFERENCE(posWall, posEnemy)) > this.pythagoras(fc.Vector3.DIFFERENCE(_target, posEnemy))) {
-      return false;
-    }
-
-    let localWall: fc.Vector3 = fc.Vector3.TRANSFORMATION(posWall, this.mtxWorldInverse, true);
-
-    if (localWall.z < 0) {
-      return false;
-    }
-
-    let ray: fc.Ray = new fc.Ray(normalEnemy, posEnemy);
-
-    let intersect: fc.Vector3 = ray.intersectPlane(posWall, normalWall);
-    let localIntersect: fc.Vector3 = fc.Vector3.TRANSFORMATION(intersect, _wall.mtxWorldInverse, true);
-    
-    if (Math.abs(localIntersect.x) > 0.5 * sizeWall.x) {
-      return false;
-    }
-    
-    return true;
-
-  }
-
-  public pythagoras(_vector: fc.Vector3): number {
-    return Math.sqrt(Math.pow(_vector.x, 2) + Math.pow(_vector.z , 2));
-  }
-
-} */ 
 //# sourceMappingURL=enemy.js.map
